@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ZYRAXON — 3D Space Shooter</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#03040c;
+font-family:'Outfit','Hind Siliguri',system-ui,sans-serif;color:#eaf2ff;
+-webkit-user-select:none;user-select:none;touch-action:none}
+canvas{display:block}
+#ui{position:fixed;inset:0;pointer-events:none;z-index:10}
+.panel{position:absolute;background:rgba(8,12,28,.55);backdrop-filter:blur(14px);
+border:1px solid rgba(120,180,255,.18);border-radius:16px;padding:12px 18px}
+#hud{top:18px;left:18px;display:flex;flex-direction:column;gap:6px;min-width:160px}
+.lbl{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#7f92b8}
+.val{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+#hi{top:18px;right:18px;text-align:right}
+#hi .val{color:#ffd166}
+#hpwrap{bottom:20px;left:50%;transform:translateX(-50%);width:min(420px,72vw)}
+#hpbar{height:9px;border-radius:100px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:7px}
+#hpfill{height:100%;width:100%;border-radius:100px;
+background:linear-gradient(90deg,#22d3ee,#7c5cff);transition:width .28s ease}
+#hint{bottom:20px;right:18px;font-size:11px;color:#7f92b8;text-align:right;line-height:1.8}
+#msg{top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;
+padding:44px 52px;display:none;pointer-events:auto;max-width:92vw}
+#msg h1{font-size:clamp(1.9rem,5.5vw,3.1rem);font-weight:800;letter-spacing:-.02em;
+background:linear-gradient(100deg,#7c5cff,#ff5c9d 50%,#22d3ee);
+-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:12px}
+#msg p{color:#9fb0d0;font-size:1rem;line-height:1.7;margin-bottom:26px}
+.btn{pointer-events:auto;cursor:pointer;border:0;font-family:inherit;font-weight:700;
+font-size:15px;padding:14px 34px;border-radius:100px;color:#03040c;
+background:linear-gradient(100deg,#7c5cff,#22d3ee);transition:.25s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(124,92,255,.45)}
+.keys{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;margin-bottom:26px}
+.k{font-size:11px;padding:7px 14px;border-radius:9px;background:rgba(255,255,255,.07);
+color:#9fb0d0;letter-spacing:.04em}
+.k b{color:#eaf2ff}
+#flash{position:fixed;inset:0;background:#ff2d55;opacity:0;pointer-events:none;
+z-index:20;transition:opacity .32s ease}
+#tip{position:fixed;bottom:14px;left:18px;font-size:10px;color:#4a5a78;z-index:11;letter-spacing:.06em}
+@media(max-width:600px){#hint{display:none}.panel{padding:9px 13px}.val{font-size:19px}}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="panel" id="hud">
+    <div><div class="lbl">স্কোর</div><div class="val" id="score">0</div></div>
+    <div><div class="lbl">ওয়েভ</div><div class="val" id="wave">1</div></div>
+  </div>
+  <div class="panel" id="hi">
+    <div class="lbl">সেরা স্কোর</div>
+    <div class="val" id="best">0</div>
+  </div>
+  <div class="panel" id="hpwrap">
+    <div class="lbl">শিপের প্রাণ</div>
+    <div id="hpbar"><div id="hpfill"></div></div>
+  </div>
+  <div class="panel" id="hint">
+    <b>W A S D</b> চলাচল &nbsp;·&nbsp; <b>মাউস</b> ঘুরিয়ে লক্ষ্য<br>
+    <b>ক্লিক / স্পেস</b> দিয়ে গুলি
+  </div>
+  <div class="panel" id="msg">
+    <h1 id="mtitle">ZYRAXON</h1>
+    <p id="mdesc">গভীর মহাকাশে ঢুকে পড়েছো। শত্রু জাহাজ ধ্বংস করো, ওয়েভ ধরে রাখো আর রেকর্ড ভাঙো।</p>
+    <div class="keys">
+      <span class="k"><b>WASD</b> চলাচল</span>
+      <span class="k"><b>মাউস</b> লক্ষ্য</span>
+      <span class="k"><b>ক্লিক / স্পেস</b> গুলি</span>
+      <span class="k"><b>SHIFT</b> বুস্ট</span>
+    </div>
+    <button class="btn" id="go">শুরু করো</button>
+  </div>
+</div>
+<div id="flash"></div>
+<div id="tip">ZYRAXON-PRO</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(function(){
+if(!window.THREE){document.getElementById('mdesc').textContent='গ্রাফিক্স ইঞ্জিন লোড হয়নি। ইন্টারনেট সংযোগ দিয়ে আবার চালাও।';return;}
+
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x03040c,0.0125);
+const cam=new THREE.PerspectiveCamera(68,innerWidth/innerHeight,0.1,900);
+cam.position.set(0,5.2,15);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.setClearColor(0x03040c);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0x5b6cff,0.85));
+const key=new THREE.PointLight(0x9fd8ff,1.4,120);key.position.set(0,12,10);scene.add(key);
+const rim=new THREE.PointLight(0xff5c9d,1.1,110);rim.position.set(-16,5,-12);scene.add(rim);
+const rim2=new THREE.PointLight(0x22d3ee,1.0,110);rim2.position.set(16,-4,-12);scene.add(rim2);
+
+const N=2600, pos=new Float32Array(N*3), col=new Float32Array(N*3);
+for(let i=0;i<N;i++){
+  pos[i*3]=(Math.random()-.5)*620;
+  pos[i*3+1]=(Math.random()-.5)*420;
+  pos[i*3+2]=-Math.random()*700;
+  const c=new THREE.Color().setHSL(Math.random()*.6+.5,Math.random()*.6+.3,.72);
+  col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b;
+}
+const sg=new THREE.BufferGeometry();
+sg.setAttribute('position',new THREE.BufferAttribute(pos,3));
+sg.setAttribute('color',new THREE.BufferAttribute(col,3));
+const stars=new THREE.Points(sg,new THREE.PointsMaterial({size:.85,vertexColors:true,sizeAttenuation:true,transparent:true,opacity:.9}));
+scene.add(stars);
+
+for(let i=0;i<7;i++){
+  const m=new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL(Math.random()*.75,.85,.28),
+    transparent:true,opacity:.09,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending});
+  const p=new THREE.Mesh(new THREE.PlaneGeometry(200+Math.random()*240,140+Math.random()*180),m);
+  p.position.set((Math.random()-.5)*260,(Math.random()-.5)*130,-60-Math.random()*520);
+  p.rotation.z=Math.random()*Math.PI;scene.add(p);
+}
+
+function shipMesh(){
+  const g=new THREE.Group();
+  const bodyMat=new THREE.MeshStandardMaterial({color:0xdfe9ff,metalness:.85,roughness:.24});
+  const trimMat=new THREE.MeshStandardMaterial({color:0x7c5cff,metalness:.7,roughness:.3,emissive:0x2a1170,emissiveIntensity:.8});
+  const glowMat=new THREE.MeshBasicMaterial({color:0x22d3ee});
+  const b=new THREE.Mesh(new THREE.ConeGeometry(.62,3.5,5),bodyMat);
+  b.rotation.x=-Math.PI/2;b.position.z=1.1;g.add(b);
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(.3,1.5,5),bodyMat);
+  nose.rotation.x=-Math.PI/2;nose.position.z=3.1;g.add(nose);
+  const wingG=new THREE.BufferGeometry();
+  wingG.setAttribute('position',new THREE.Float32BufferAttribute([
+     0,0,1.6,  -2.5,0,-1.2,  -0.55,0,-0.4,
+     0,0,1.6,   0.55,0,-0.4,   2.5,0,-1.2,
+     0,.22,1.5, 0,.22,-1.4,     0,1.5,-2.2
+  ],3));
+  wingG.computeVertexNormals();
+  const wings=new THREE.Mesh(wingG,new THREE.MeshStandardMaterial({color:0x9fb4dd,metalness:.8,roughness:.3,side:THREE.DoubleSide}));
+  g.add(wings);
+  [-1.6,1.6].forEach(x=>{
+    const e=new THREE.Mesh(new THREE.CapsuleGeometry(.26,1.3,4,10),trimMat);
+    e.rotation.x=Math.PI/2;e.position.set(x,.05,-1.4);g.add(e);
+    const th=new THREE.Mesh(new THREE.ConeGeometry(.3,1.5,8),glowMat);
+    th.rotation.x=Math.PI/2;th.position.set(x,.05,-2.7);g.add(th);
+  });
+  const c=new THREE.Mesh(new THREE.SphereGeometry(.42,16,16),new THREE.MeshBasicMaterial({color:0x9fe8ff}));
+  c.position.set(0,.24,-.4);g.add(c);
+  const noseL=new THREE.PointLight(0x7cf3ff,2.2,22);noseL.position.set(0,.3,1.4);g.add(noseL);
+  return g;
+}
+const ship=shipMesh();scene.add(ship);
+
+const S={score:0,best:+(localStorage.getItem('zy_best')||0),wave:1,hp:100,
+         running:false,over:false,shoot:false};
+const keys={};
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'){S.shoot=true;e.preventDefault();}});
+addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='Space')S.shoot=false;});
+renderer.domElement.addEventListener('mousedown',()=>S.shoot=true);
+addEventListener('mouseup',()=>S.shoot=false);
+
+let bullets=[],enemies=[],ebul=[],parts=[],explos=[];
+
+function enemyMesh(kind){
+  const g=new THREE.Group();
+  const hue=[0x7c5cff,0xff5c9d,0x22d3ee,0xffa62b][kind%4];
+  const m=new THREE.MeshStandardMaterial({color:hue,metalness:.6,roughness:.35,emissive:hue,emissiveIntensity:.32});
+  if(kind%3===0){
+    const c=new THREE.Mesh(new THREE.IcosahedronGeometry(1.5,0),m);g.add(c);
+    const r=new THREE.Mesh(new THREE.TorusGeometry(2.1,.14,8,26),m);r.rotation.x=1.2;g.add(r);
+  }else if(kind%3===1){
+    const b=new THREE.Mesh(new THREE.OctahedronGeometry(1.6,0),m);g.add(b);
+    [-1,1].forEach(s=>{const w=new THREE.Mesh(new THREE.BoxGeometry(1.6,.16,.8),m);w.position.set(s*2.1,0,0);g.add(w);});
+  }else{
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.7,2.4,7),m);b.rotation.x=Math.PI/2;g.add(b);
+    const t=new THREE.Mesh(new THREE.ConeGeometry(.9,2.6,7),m);t.rotation.x=Math.PI/2;t.position.z=2.2;g.add(t);
+  }
+  const l=new THREE.PointLight(hue,1.6,18);g.add(l);
+  g.userData.kind=kind;g.userData.hp=kind%3===0?2:1;g.userData.hue=hue;
+  return g;
+}
+function burst(pos,hue,n){
+  for(let i=0;i<n;i++){
+    const m=new THREE.MeshBasicMaterial({color:hue,transparent:true});
+    const s=new THREE.Mesh(new THREE.SphereGeometry(.14+Math.random()*.2,6,6),m);
+    s.position.copy(pos);
+    s.userData.v=new THREE.Vector3((Math.random()-.5)*11,(Math.random()-.5)*11,(Math.random()-.5)*11);
+    s.userData.l=.5+Math.random()*.5;
+    scene.add(s);parts.push(s);
+  }
+}
+function boom(pos,hue){
+  const m=new THREE.MeshBasicMaterial({color:hue,transparent:true,opacity:.9});
+  const s=new THREE.Mesh(new THREE.SphereGeometry(.5,14,14),m);
+  s.position.copy(pos);s.userData.l=1;scene.add(s);explos.push(s);
+  if(explos.length>40){const o=explos.shift();scene.remove(o);}
+  burst(pos,hue,22);
+}
+
+function spawnWave(){
+  const w=S.wave;
+  const cfg=[[5],[7],[6,2],[8,1],[9,2],[8,3],[10,2],[12,3]][Math.min(w-1,7)];
+  cfg.forEach((n,k)=>{
+    for(let i=0;i<n;i++){
+      setTimeout(()=>{
+        if(S.over)return;
+        const e=enemyMesh((k+w)%4);
+        e.position.set((i-(n-1)/2)*(n>6?9:13),2+Math.random()*5,-(150+k*22));
+        e.userData.vy=(Math.random()-.5)*1.4;
+        e.userData.vx=(Math.random()-.5)*1.2;
+        e.userData.cd=Math.random()*1.4;
+        scene.add(e);enemies.push(e);
+      },i*230);
+    }
+  });
+  document.getElementById('wave').textContent=w;
+}
+
+let last=performance.now(),acc=0,elapsed=0;
+function tick(now){
+  requestAnimationFrame(tick);
+  const dt=Math.min((now-last)/1000,.05);last=now;elapsed+=dt;
+
+  if(S.running){
+    const sp=(keys.ShiftLeft||keys.ShiftRight?34:20)*dt;
+    if(keys.KeyW||keys.ArrowUp)ship.position.z-=sp;
+    if(keys.KeyS||keys.ArrowDown)ship.position.z+=sp;
+    if(keys.KeyA||keys.ArrowLeft)ship.position.x-=sp;
+    if(keys.KeyD||keys.ArrowRight)ship.position.x+=sp;
+    ship.position.z=Math.max(-58,Math.min(8,ship.position.z));
+    ship.position.x=Math.max(-38,Math.min(38,ship.position.x));
+    ship.position.y=Math.sin(elapsed*1.6)*.5+4.4;
+    ship.rotation.y=THREE.MathUtils.lerp(ship.rotation.y,(keys.KeyA?-0.3:0)+(keys.KeyD?0.3:0),1-Math.pow(.001,dt));
+    ship.rotation.z=THREE.MathUtils.lerp(ship.rotation.z,-(keys.KeyA?-0.2:0)-(keys.KeyD?0.2:0),1-Math.pow(.001,dt));
+    ship.rotation.x=THREE.MathUtils.lerp(ship.rotation.x,(keys.KeyW?0.12:0)-(keys.KeyS?0.12:0),1-Math.pow(.001,dt));
+
+    if(S.shoot&&elapsed-acc>.11){
+      acc=elapsed;
+      const m=new THREE.MeshBasicMaterial({color:0x7cf3ff});
+      const b=new THREE.Mesh(new THREE.CapsuleGeometry(.11,1.1,4,6),m);
+      b.rotation.x=Math.PI/2;
+      b.position.copy(ship.position).add(new THREE.Vector3(0,0,3.4));
+      scene.add(b);bullets.push(b);
+    }
+    for(let i=bullets.length-1;i>=0;i--){
+      const b=bullets[i];
+      b.position.z-=105*dt;b.position.x+=Math.sin(elapsed*9)*1.6*dt;
+      if(b.position.z<-260){scene.remove(b);bullets.splice(i,1);continue;}
+      for(let j=enemies.length-1;j>=0;j--){
+        const e=enemies[j];
+        if(b.position.distanceTo(e.position)<2.7){
+          e.userData.hp--;
+          burst(b.position,0x7cf3ff,5);
+          if(e.userData.hp<=0){
+            boom(e.position,e.userData.hue);
+            scene.remove(e);enemies.splice(j,1);
+            S.score+=(e.userData.kind+1)*75;
+            if(enemies.length===0){S.wave++;spawnWave();}
+            document.getElementById('score').textContent=S.score;
+          }
+          scene.remove(b);bullets.splice(i,1);break;
+        }
+      }
+    }
+
+    for(let i=enemies.length-1;i>=0;i--){
+      const e=enemies[i];
+      e.position.z+=13*dt;
+      e.position.x+=e.userData.vx*dt*2.4;
+      e.position.y+=e.userData.vy*dt*1.6;
+      e.rotation.x+=dt*1.1;e.rotation.y+=dt*.85;
+      e.userData.cd-=dt;
+      if(e.userData.cd<=0){
+        e.userData.cd=1.5+Math.random()*1.7;
+        const m=new THREE.MeshBasicMaterial({color:0xff5c9d});
+        const b=new THREE.Mesh(new THREE.SphereGeometry(.24,8,8),m);
+        b.position.copy(e.position);
+        b.userData.vz=-46;
+        scene.add(b);ebul.push(b);
+      }
+      if(e.position.z>16){scene.remove(e);enemies.splice(i,1);hurt(24);continue;}
+      if(e.position.distanceTo(ship.position)<3.1){
+        boom(e.position,0xff5c9d);scene.remove(e);enemies.splice(i,1);hurt(18);
+      }
+    }
+    for(let i=ebul.length-1;i>=0;i--){
+      const b=ebul[i];
+      b.position.z+=b.userData.vz*dt;
+      if(b.position.z>14){scene.remove(b);ebul.splice(i,1);continue;}
+      if(b.position.distanceTo(ship.position)<1.5){
+        scene.remove(b);ebul.splice(i,1);hurt(9);
+      }
+    }
+    for(let i=parts.length-1;i>=0;i--){
+      const p=parts[i];
+      p.position.addScaledVector(p.userData.v,dt);
+      p.userData.v.multiplyScalar(1-dt*1.4);
+      p.userData.l-=dt;p.material.opacity=Math.max(0,p.userData.l);
+      if(p.userData.l<=0){scene.remove(p);parts.splice(i,1);}
+    }
+    explos.forEach(x=>{x.userData.l-=dt*1.5;x.scale.setScalar(1+(1-x.userData.l)*7);x.material.opacity=Math.max(0,x.userData.l*.85);});
+    explos=explos.filter(x=>{if(x.userData.l<=0){scene.remove(x);return false}return true});
+
+    stars.position.z+=dt*6;
+    if(stars.position.z>28)stars.position.z=0;
+
+    if(S.hp<=0)gameOver();
+  }
+
+  cam.position.x=THREE.MathUtils.lerp(cam.position.x,ship.position.x*.3,1-Math.pow(.02,dt));
+  cam.position.y=THREE.MathUtils.lerp(cam.position.y,ship.position.y*.3+2,1-Math.pow(.02,dt));
+  cam.position.z=ship.position.z+15;
+  cam.lookAt(ship.position.x*.35,ship.position.y*.3,ship.position.z-34);
+
+  renderer.render(scene,cam);
+}
+
+function hurt(n){
+  S.hp=Math.max(0,S.hp-n);
+  document.getElementById('hpfill').style.width=S.hp+'%';
+  const f=document.getElementById('flash');
+  f.style.opacity='.36';setTimeout(()=>f.style.opacity='0',60);
+}
+function reset(){
+  bullets.forEach(b=>scene.remove(b));bullets=[];
+  enemies.forEach(e=>scene.remove(e));enemies=[];
+  ebul.forEach(b=>scene.remove(b));ebul=[];
+  parts.forEach(p=>scene.remove(p));parts=[];
+  explos.forEach(e=>scene.remove(e));explos=[];
+  S.score=0;S.wave=1;S.hp=100;S.over=false;
+  ship.position.set(0,4.4,0);
+  document.getElementById('score').textContent='0';
+  document.getElementById('wave').textContent='1';
+  document.getElementById('hpfill').style.width='100%';
+}
+function start(){
+  document.getElementById('msg').style.display='none';
+  reset();S.running=true;spawnWave();
+}
+function gameOver(){
+  S.running=false;S.over=true;
+  if(S.score>S.best){S.best=S.score;localStorage.setItem('zy_best',S.best);}
+  document.getElementById('best').textContent=S.best;
+  document.getElementById('mtitle').textContent='মিশন শেষ';
+  document.getElementById('mdesc').textContent='তোমার স্কোর '+S.score+' · ওয়েভ '+S.wave+'। সেরা স্কোর '+S.best+'। আবার চেষ্টা করো!';
+  document.getElementById('go').textContent='আবার খেলো';
+  document.getElementById('msg').style.display='block';
+}
+document.getElementById('go').addEventListener('click',start);
+document.getElementById('msg').style.display='block';
+document.getElementById('best').textContent=S.best;
+addEventListener('resize',()=>{
+  cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
